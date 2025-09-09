@@ -20,13 +20,13 @@ cat_cols = ['QUASTR','OPCCO','LCBXON','Product','ENDUSE','PASSNR']
 
 # ตัวแปรที่อนุญาตให้ปรับได้ (actionable)
 actionable = {
-    "CT_HEAD": {"min": 400, "max": 900, "step": 1},
-    "FT_HEAD": {"min": 300, "max": 1200, "step": 1},
-    "XVPTF8": {"min": 1.0, "max": 30.0, "step": 0.1},
-    "FTGM": {"min": 1000, "max": 20000, "step": 10},
-    "HDFBTH": {"min": 0.1, "max": 100.0, "step": 0.1},
-    "LSP_Body": {"min": 800, "max": 1400, "step": 1},
-    "Entry_Body": {"min": 800, "max": 1400, "step": 1},
+    "CT_HEAD": {"min": 400, "max": 800, "step": 10},
+    "FT_HEAD": {"min": 700, "max": 950, "step": 10},
+    "XVPTF8": {"min": 2.0, "max": 14.0, "step": 0.2},
+    "FTGM": {"min": 1000, "max": 16000, "step": 200},
+    "HDFBTH": {"min": 1, "max": 28, "step": 1},
+    "LSP_Body": {"min": 1000, "max": 1200, "step": 20},
+    "Entry_Body": {"min": 800, "max": 1100, "step": 20},
 }
 
 LOGFILE = "policy_log.csv"
