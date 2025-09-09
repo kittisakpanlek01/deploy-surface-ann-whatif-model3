@@ -201,6 +201,8 @@ with col2:
             cat_defaults[c] = st.selectbox(c, options=opts)
         else:
             cat_defaults[c] = st.text_input(c, value="")
+            
+# If no categories available, use text input
 for c in cat_cols:
     # Try to set a sensible default if encoder has categories
     opts = None
