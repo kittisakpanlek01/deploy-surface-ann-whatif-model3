@@ -177,31 +177,14 @@ st.markdown("**Categorical features (use for model input)**")
 cat_defaults = {}
 col1, col2 = st.columns(2)
 with col1:
-    for c in cat_cols[:len(cat_cols)//2]:
-        # Try to set a sensible default if encoder has categories
-        opts = None
-        try:
-            # encoder.categories_ corresponds to columns of encoder but may be for all categorical features combined
-            opts = encoder.categories_[cat_cols.index(c)] if c in cat_cols else None
-        except Exception:
-            opts = None
-        if opts:
-            cat_defaults[c] = st.selectbox(c, options=opts)
-        else:
-            cat_defaults[c] = st.text_input(c, value="")
+    for c in ["QUASTR", "OPCCO", "LCBXON"]:
+        default = "C032RBB" if c=="QUASTR" else ("31" if c=="OPCCO" else "USED CB")
+        cat_defaults[c] = st.selectbox(c, options=encoder.categories_[c], index=0, key=f"cat_{c}", help=f"Select {c} category")
 with col2:
-    for c in cat_cols[len(cat_cols)//2:]:
-        # Try to set a sensible default if encoder has categories
-        opts = None
-        try:
-            opts = encoder.categories_[cat_cols.index(c)] if c in cat_cols else None
-        except Exception:
-            opts = None
-        if opts:
-            cat_defaults[c] = st.selectbox(c, options=opts)
-        else:
-            cat_defaults[c] = st.text_input(c, value="")
-            
+    for c in ["Product", "ENDUSE", "PASSNR"]:
+        default = "PO/POx" if c=="Product" else ("ADO" if c=="ENDUSE" else "5")
+        cat_defaults[c] = st.selectbox(c, options=encoder.categories_[c], index=0, key=f"cat_{c}", help=f"Select {c} category")
+
 # If no categories available, use text input
 for c in cat_cols:
     # Try to set a sensible default if encoder has categories
