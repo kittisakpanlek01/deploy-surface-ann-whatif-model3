@@ -174,8 +174,25 @@ for c in num_cols:
 
 # categorical inputs (use first known categories from encoder if possible)
 st.markdown("**Categorical features (use for model input)**")
+cat_defaults = {}
+col1, col2 = st.columns(2)
+# Use encoder categories if available, otherwise use text input
+cat_cols = [c for c in cat_cols if c in encoder.categories_]
+if cat_cols:
+    with col1:
+        for c in cat_cols[:len(cat_cols)//2]:
+            default = encoder.categories_[c][0] if encoder.categories_[c].size > 0 else ""
+            cat_defaults[c] = st.selectbox(c, options=encoder.categories_[c], index=0, key=f"cat_{c}", help=f"Select {c} category")
+    with col2:
+        for c in cat_cols[len(cat_cols)//2:]:
+            default = encoder.categories_[c][0] if encoder.categories_[c].size > 0 else ""
+            cat_defaults[c] = st.selectbox(c, options=encoder.categories_[c], index=0, key=f"cat_{c}", help=f"Select {c} category")
+else:
+    # If no categories available, use text input
+    for c in cat_cols:
+        cat_defaults[c] = st.text_input(c, value="", key=f"cat_{c}", help=f"Input {c} category")
 
-# cat_defaults = {}
+
 # col1, col2 = st.columns(2)
 # with col1:
 #     for c in ["QUASTR", "OPCCO", "LCBXON"]:
