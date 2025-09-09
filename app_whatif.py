@@ -175,6 +175,32 @@ for c in num_cols:
 # categorical inputs (use first known categories from encoder if possible)
 st.markdown("**Categorical features (use for model input)**")
 cat_defaults = {}
+col1, col2 = st.columns(2)
+with col1:
+    for c in cat_cols[:len(cat_cols)//2]:
+        # Try to set a sensible default if encoder has categories
+        opts = None
+        try:
+            # encoder.categories_ corresponds to columns of encoder but may be for all categorical features combined
+            opts = encoder.categories_[cat_cols.index(c)] if c in cat_cols else None
+        except Exception:
+            opts = None
+        if opts:
+            cat_defaults[c] = st.selectbox(c, options=opts)
+        else:
+            cat_defaults[c] = st.text_input(c, value="")
+with col2:
+    for c in cat_cols[len(cat_cols)//2:]:
+        # Try to set a sensible default if encoder has categories
+        opts = None
+        try:
+            opts = encoder.categories_[cat_cols.index(c)] if c in cat_cols else None
+        except Exception:
+            opts = None
+        if opts:
+            cat_defaults[c] = st.selectbox(c, options=opts)
+        else:
+            cat_defaults[c] = st.text_input(c, value="")
 for c in cat_cols:
     # Try to set a sensible default if encoder has categories
     opts = None
