@@ -4,6 +4,108 @@ import pandas as pd
 import numpy as np
 import joblib
 import tensorflow as tf
+import shap
+import matplotlib.pyplot as plt
+
+# โหลดโมเดลและ tools
+model = tf.keras.models.load_model("surface_ann_model.keras")
+scaler = joblib.load("scaler.pkl")
+encoder = joblib.load("onehot_encoder.pkl")
+label_encoder = joblib.load("label_encoder.pkl")
+
+# กำหนด feature groups
+num_cols = ['HNSPDI','WNSPDI','RMEXTG','SLFUTI','LSP_Body','Entry_Body',
+            'XVPTF8','FT_HEAD','CT_HEAD','FTGM','HDFBTH']
+cat_cols = ['QUASTR','OPCCO','LCBXON','Product','ENDUSE','PASSNR']
+
+st.title("🔎 What-if Analysis: Surface Defect Prevention (with SHAP)")
+
+# ----------------------------
+# Input UI (with default values)
+# ----------------------------
+input_data = {
+    "HNSPDI": st.number_input("THICKNESS", value=4.0),
+    "WNSPDI": st.number_input("WIDTH", value=1219.0),
+    "RMEXTG": st.number_input("BAR_THICK", value=38.0),
+    "SLFUTI": st.number_input("TIME_IN_FUR", value=3.5),
+    "LSP_Body": st.number_input("LSP_Body", value=1100.0),
+    "Entry_Body": st.number_input("Entry_Body", value=1040.0),
+    "XVPTF8": st.number_input("SPEED", value=8.0),
+    "FT_HEAD": st.number_input("FT_HEAD", value=860.0),
+    "CT_HEAD": st.number_input("CT_HEAD", value=540.0),
+    "FTGM": st.number_input("FM_FORCE", value=9000.0),
+    "HDFBTH": st.number_input("HDFBTH", value=18.0),
+    "QUASTR": st.selectbox("QUASTR", ["C032","C032RBB","CG145","CS0810","CN1410","CR1512"]),
+    "OPCCO": st.selectbox("OPCCO", ["0","10","21","31","41","51","66"]),
+    "LCBXON": st.selectbox("LCBXON", ["USED CB","BYPASS CB"]),
+    "Product": st.selectbox("PRODUCT", ["ColdRoll","CutSheet","Other","PO/POx","Stock"]),
+    "ENDUSE": st.selectbox("ENDUSE", ["PNX","SDX","FXX","DGX","ADO","ADH","K1I","GXX","RST"]),
+    "PASSNR": st.selectbox("RM_PASS", ["5","7","9"])
+}
+
+df_input = pd.DataFrame([input_data])
+
+if st.button("🔮 Predict Good/Defect + Explain"):
+    try:
+        # -----------------------
+        # เตรียมข้อมูล input
+        # -----------------------
+        X_num = df_input[num_cols]
+        X_cat = df_input[cat_cols]
+
+        X_scaled = scaler.transform(X_num)
+        X_cat_encoded = encoder.transform(X_cat).toarray()
+        X_all = np.hstack((X_scaled, X_cat_encoded))
+
+        # -----------------------
+        # พยากรณ์
+        # -----------------------
+        preds = model.predict(X_all)
+        pred_label = label_encoder.inverse_transform([np.argmax(preds)])
+
+        st.success(f"✅ Prediction: {pred_label[0]}")
+        st.write("Probability (per class):", preds.tolist())
+
+        # -----------------------
+        # SHAP explanation
+        # -----------------------
+        st.subheader("📊 Local SHAP Explanation")
+
+        # สร้าง SHAP explainer (ใช้ DeepExplainer หรือ KernelExplainer)
+        explainer = shap.DeepExplainer(model, X_all)  # สำหรับ Keras NN
+        shap_values = explainer.shap_values(X_all)
+
+        # ชื่อฟีเจอร์ = num + cat one-hot
+        feature_names = num_cols + list(encoder.get_feature_names_out(cat_cols))
+
+        # เลือก sample แรก
+        sv = shap_values[np.argmax(preds)][0]
+
+        # ทำ DataFrame สำหรับแสดงผล
+        shap_df = pd.DataFrame({
+            "Feature": feature_names,
+            "SHAP Value": sv,
+            "Value": np.concatenate([X_num.values[0], X_cat_encoded[0]])
+        }).sort_values("SHAP Value", key=abs, ascending=False)
+
+        st.dataframe(shap_df.head(10))
+
+        # Plot bar chart (top features)
+        fig, ax = plt.subplots(figsize=(8,5))
+        shap_df.head(10).plot(
+            kind="barh", x="Feature", y="SHAP Value", ax=ax, legend=False
+        )
+        st.pyplot(fig)
+
+    except Exception as e:
+        st.error(f"Prediction/SHAP error: {str(e)}")
+
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import joblib
+import tensorflow as tf
 import datetime
 import os
 import json
