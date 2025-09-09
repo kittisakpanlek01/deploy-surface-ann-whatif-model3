@@ -174,25 +174,7 @@ for c in num_cols:
 
 # categorical inputs (use first known categories from encoder if possible)
 st.markdown("**Categorical features (use for model input)**")
-cat_features = {c: "" for c in cat_cols}  # default empty
-cat_defaults = {}
-# If encoder has categories, use selectbox; otherwise use text input
-if hasattr(encoder, 'categories_'):
-    # Use encoder.categories_ to get known categories for each categorical feature
-    for c in cat_cols:
-        if c in encoder.categories_:
-            # Use first category as default if available
-            default = encoder.categories_[c][0] if len(encoder.categories_[c]) > 0 else ""
-            cat_defaults[c] = st.selectbox(c, options=encoder.categories_[c], index=0, key=f"cat_{c}", help=f"Select {c} category")
-        else:
-            # No categories available, use text input
-            cat_defaults[c] = st.text_input(c, value="")
-else:
-    # If no encoder categories, use text input for all
-    st.warning("Encoder categories not available; using text input for categorical features.")
-    for c in cat_cols:
-        cat_defaults[c] = st.text_input(c, value="")
-        
+
 # cat_defaults = {}
 # col1, col2 = st.columns(2)
 # with col1:
