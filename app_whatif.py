@@ -156,10 +156,14 @@ st.subheader("1) กรอกค่าปัจจุบันของคอย
 base_features = {}
 col1, col2, col3 = st.columns(3)
 with col1:
+    for c in ["HNSPDI","WNSPDI","RMEXTG","SLFUTI"]:
+        default = 4.0 if c=="HNSPDI" else (1219.0 if c=="WNSPDI" else (38.0 if c=="RMEXTG" else 3.5))
+        base_features[c] = st.number_input(c, value=float(default))
+with col2:
     for c in ["CT_HEAD","FT_HEAD","XVPTF8","FTGM"]:
         default = 540 if c=="CT_HEAD" else (860 if c=="FT_HEAD" else (8.0 if c=="XVPTF8" else 9000))
         base_features[c] = st.number_input(c, value=float(default))
-with col2:
+with col3:
     for c in ["HDFBTH","LSP_Body","Entry_Body"]:
         default = 18.0 if c=="HDFBTH" else (1110.0 if c=="LSP_Body" else 1040.0)
         base_features[c] = st.number_input(c, value=float(default))
