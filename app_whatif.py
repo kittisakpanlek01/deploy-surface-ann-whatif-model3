@@ -175,12 +175,6 @@ for c in num_cols:
 # categorical inputs (use first known categories from encoder if possible)
 st.markdown("**Categorical features (use for model input)**")
 cat_defaults = {}
-col1, col2 = st.columns(2)
-# Use encoder categories if available, otherwise use text input
-with col1:
-    for c in ["QUASTR", "OPCCO", "LCBXON"]:
-        default = "C032RBB" if c=="QUASTR" else ("31" if c=="OPCCO" else "USED CB")
-        cat_defaults[c] = st.selectbox(c, options=encoder.categories_[c], index=0, key=f"cat_{c}", help=f"Select {c} category")
 
 # col1, col2 = st.columns(2)
 # with col1:
