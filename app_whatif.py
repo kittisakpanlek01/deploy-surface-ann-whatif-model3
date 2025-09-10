@@ -1,4 +1,4 @@
-# app_whatif.py  (หรือรวมเข้า app.py ของคุณ)
+# app_whatif.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -114,81 +114,57 @@ def suggest_changes(base_features, target_improve=0.05, n_steps=11, max_delta_fr
     suggestions_sorted = sorted(suggestions, key=lambda x: (x["improvement"], x["gain_per_unit"]), reverse=True)
     return base_prob_series, base_pgood, suggestions_sorted
 
-# --- SHAP explanation (best-effort) ---
-def compute_shap_values(base_features):
-    # """Try compute SHAP values. Returns dataframe of shap values or error string."""
-    # try:
-    #     import shap
-    # except Exception as e:
-    #     return None, f"shap not available: {e}"
 
-    # # Build background using a single baseline (could be improved by using real background dataset)
-    # try:
-    #     X_all, df_num, df_cat = build_X_from_dict(base_features)
-    #     # For keras model, try DeepExplainer when possible
-    #     explainer = None
-    #     try:
-    #         explainer = shap.DeepExplainer(model, X_all)  # might fail if model incompatible
-    #         shap_values = explainer.shap_values(X_all)
-    #     except Exception:
-    #         # fallback to KernelExplainer (slower)
-    #         background = X_all  # tiny background
-    #         explainer = shap.KernelExplainer(lambda x: model.predict(x), background)
-    #         shap_values = explainer.shap_values(X_all, nsamples=50)
-    #     # shap_values may be list (per-class) or array
-    #     return shap_values, None
-    # except Exception as e:
-    #     return None, str(e)
+# --- SHAP explanation ---
+def compute_and_plot_shap(base_features_dict):
+    """
+    คำนวณ SHAP values และสร้าง waterfall plot สำหรับ feature ปัจจุบัน
+    Returns:
+        - fig: matplotlib figure object for the plot.
+        - error_message: string with error if any, otherwise None.
+    """
+    try:
+        # 1. เตรียมข้อมูล Input สำหรับ Model และ SHAP
+        X_all, _, _ = build_X_from_dict(base_features_dict)
 
-        # ===========================
-        # Local SHAP Explanation
-        # ===========================
-        # --- preprocess ---
-        X_num = df_input[num_cols]
-        X_cat = df_input[cat_cols]
+        # 2. สร้าง Explainer
+        # ใช้ background sample ขนาดเล็ก (หรือ dataset จริง) จะเสถียรกว่าการใช้ instance เดียว
+        # ในที่นี้ขอใช้ X_all ที่เพิ่งสร้างเป็น background แบบง่ายไปก่อน
+        explainer = shap.KernelExplainer(model.predict, X_all)
 
-        X_scaled = scaler.transform(X_num)
-        X_cat_encoded = encoder.transform(X_cat).toarray()
-        X_all = np.hstack((X_scaled, X_cat_encoded)).reshape(1, -1)
+        # 3. คำนวณ SHAP values
+        # nsamples คือจำนวนครั้งที่จะ sample background, 'auto' คือค่าที่ดี
+        shap_values = explainer.shap_values(X_all, nsamples='auto')
 
-        # --- predict ---
-        pred = model.predict(X_all)
-        probs = tf.nn.softmax(pred).numpy()[0]
+        # 4. หา Index ของ Class 'Good' หรือ 'No Defect'
+        good_class_idx = find_good_label_index()
+        if good_class_idx is None:
+            # ถ้าหาไม่เจอ ให้ใช้ class ที่มี probability สูงสุดแทน
+            probs, _ = predict_probs(base_features_dict)
+            good_class_idx = np.argmax(probs.values)
+            st.warning(f"ไม่พบ Class 'Good/No Defect' ใน Label Encoder, จึงใช้ Class ที่มีโอกาสสูงสุดแทน: '{label_encoder.classes_[good_class_idx]}'")
 
-        # P(No Defect) = index 3
-        p_good = probs[2] if len(probs) > 3 else None
-        pred_label = label_encoder.inverse_transform([np.argmax(pred)])[0]
+        # 5. สร้าง SHAP Explanation Object สำหรับ Class ที่เราสนใจ
+        # shap_values เป็น list ของ arrays (1 array ต่อ 1 class)
+        # explainer.expected_value เป็น list ของ base values (1 ค่าต่อ 1 class)
+        explanation = shap.Explanation(
+            values=shap_values[good_class_idx][0],
+            base_values=explainer.expected_value[good_class_idx],
+            data=X_all[0],
+            feature_names=num_cols + list(encoder.get_feature_names_out(cat_cols))
+        )
 
-        try:
-            st.subheader("Local SHAP Explanation")
+        # 6. สร้าง Plot
+        fig, ax = plt.subplots()
+        shap.plots.waterfall(explanation, max_display=15, show=False)
+        fig.tight_layout()
+        return fig, None
 
-            # ใช้ background (sampling เล็ก ๆ จะเสถียรกว่า)
-            background = X_all
-            explainer = shap.Explainer(model, background)
-            shap_values = explainer(X_all)  # ออกมาเป็น multi-output
-
-            # เลือก class "No Defect" = index 3
-            if shap_values.values.ndim == 3:
-                sv = shap_values.values[0, :, 3]   # sample 0, features :, class index 3
-            elif shap_values.values.ndim == 2:
-                sv = shap_values.values[0]         # กรณี binary หรือ single output
-            else:
-                raise ValueError("Unexpected SHAP output shape")
-
-            # plot waterfall
-            fig, ax = plt.subplots(figsize=(8, 5))
-            shap.plots.waterfall(shap.Explanation(
-                values=sv,
-                base_values=shap_values.base_values[0, 3] if shap_values.values.ndim == 3 else shap_values.base_values[0],
-                data=X_all[0],
-                feature_names=num_cols + list(encoder.get_feature_names_out(cat_cols))
-            ), show=False)
-            st.pyplot(fig)
-
-        except Exception as e:
-            st.error(f"SHAP computation failed: {e}")    
+    except Exception as e:
+        return None, f"SHAP computation failed: {e}"
 
 
+# ... (โค้ดส่วน Streamlit UI ก่อนหน้า) ...
 # --- Logging function ---
 def append_log(entry: dict):
     df_entry = pd.DataFrame([entry])
@@ -226,18 +202,6 @@ for c in num_cols:
 # categorical inputs (use first known categories from encoder if possible)
 st.markdown("**Categorical features (use for model input)**")
 cat_defaults = {}
-
-# col1, col2 = st.columns(2)
-# with col1:
-#     for c in ["QUASTR", "OPCCO", "LCBXON"]:
-#         default = "C032RBB" if c=="QUASTR" else ("31" if c=="OPCCO" else "USED CB")
-#         cat_defaults[c] = st.selectbox(c, options=encoder.categories_[c], index=0, key=f"cat_{c}", help=f"Select {c} category")
-# with col2:
-#     for c in ["Product", "ENDUSE", "PASSNR"]:
-#         default = "PO/POx" if c=="Product" else ("ADO" if c=="ENDUSE" else "5")
-#         cat_defaults[c] = st.selectbox(c, options=encoder.categories_[c], index=0, key=f"cat_{c}", help=f"Select {c} category")
-
-# If no categories available, use text input
 for c in cat_cols:
     # Try to set a sensible default if encoder has categories
     opts = None
@@ -298,40 +262,29 @@ if st.button("Generate suggestions"):
         except Exception as e:
             st.error(f"Error while generating suggestions: {e}")
 
+
 st.write("---")
 st.subheader("3) SHAP explanation (local)")
-if st.button("Compute SHAP for current profile (best-effort)"):
-    
-    # ===========================
-    st.sidebar.header("Input Parameters")
-    input_data = {
-        "HNSPDI": st.sidebar.number_input("THICKNESS", value=4.0),
-        "WNSPDI": st.sidebar.number_input("WIDTH", value=1219.0),
-        "RMEXTG": st.sidebar.number_input("BAR_THICK", value=38.0),
-        "SLFUTI": st.sidebar.number_input("TIME_IN_FUR", value=3.5),
-        "LSP_Body": st.sidebar.number_input("LSP_Body", value=1100.0),
-        "Entry_Body": st.sidebar.number_input("Entry_Body", value=1040.0),
-        "XVPTF8": st.sidebar.number_input("SPEED", value=8.0),
-        "FT_HEAD": st.sidebar.number_input("FT_HEAD", value=860.0),
-        "CT_HEAD": st.sidebar.number_input("CT_HEAD", value=540.0),
-        "FTGM": st.sidebar.number_input("FM_FORCE", value=9000),
-        "HDFBTH": st.sidebar.number_input("HDFBTH", value=18.0),
-        "QUASTR": st.sidebar.selectbox("QUASTR", options=["C032RBB", "C032", "CG145", "CS0810", "CN1410", "CR1512"]),
-        "OPCCO": st.sidebar.selectbox("OPCCO", options=["31", "0", "10", "21",  "41", "51", "66"]),
-        "LCBXON": st.sidebar.selectbox("LCBXON", options=["USED CB", "BYPASS CB"]),
-        "Product": st.sidebar.selectbox("PRODUCT", options=["PO/POx", "ColdRoll", "CutSheet", "Other",  "Stock"]),
-        "ENDUSE": st.sidebar.selectbox("ENDUSE", options=["ADO", "PNX", "SDX", "FXX", "DGX", "ADH", "K1I", "GXX", "RST"]),
-        "PASSNR": st.sidebar.selectbox("RM_PASS", options=["5", "7", "9"])
-    }
-    df_input = pd.DataFrame([input_data])
-    
+st.markdown("แสดงปัจจัยที่มีผลต่อการทำนาย P(Good) สำหรับคอยล์ปัจจุบัน")
 
-    shap_vals, shap_err = compute_shap_values({**base_features, **cat_defaults})
-    if shap_err:
-        st.error(f"SHAP not available: {shap_err}")
-    else:
-        st.write("SHAP computed (showing raw output). Note: visualization requires shap and JS support.")
-        st.write(shap_vals)
+if st.button("Compute SHAP for current profile"):
+    with st.spinner("Calculating SHAP values... This may take a moment."):
+        # นำ dict ของ features ทั้งหมดมารวมกัน
+        current_features = {**base_features, **cat_defaults}
+
+        fig, err = compute_and_plot_shap(current_features)
+
+        if err:
+            st.error(err)
+        else:
+            good_class_name = "Good/No Defect"
+            if GOOD_IDX is not None:
+                good_class_name = label_encoder.classes_[GOOD_IDX]
+
+            st.write(f"**Waterfall plot for class: '{good_class_name}'**")
+            st.write("กราฟแสดงว่าแต่ละ feature 'ผลัก' ค่าความน่าจะเป็นออกจากค่าเฉลี่ย (base value) ไปในทิศทางบวก (เพิ่มโอกาส Good) หรือลบ (ลดโอกาส Good) มากน้อยเพียงใด")
+            st.pyplot(fig)
+
 
 st.write("---")
 st.subheader("4) Human decision & Logging")
