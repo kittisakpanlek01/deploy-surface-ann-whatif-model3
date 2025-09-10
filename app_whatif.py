@@ -49,7 +49,9 @@ def suggest_changes(df_input, base_prob, step=0.05):
 # SHAP Computation Function
 # --------------------------
 def compute_shap_values(X_all, preds):
-    """คำนวณ SHAP values และคืน DataFrame + matplotlib fig"""
+    """
+    คำนวณ SHAP values สำหรับ class 'Good' (index 0)
+    """
     try:
         explainer = shap.DeepExplainer(model, X_all)
         shap_values = explainer.shap_values(X_all)
@@ -59,7 +61,9 @@ def compute_shap_values(X_all, preds):
         shap_values = explainer.shap_values(X_all, nsamples=50)
 
     feature_names = num_cols + list(encoder.get_feature_names_out(cat_cols))
-    sv = shap_values[np.argmax(preds)][0]
+
+    # ✅ Fix: อธิบายเฉพาะ class 0 (Good)
+    sv = shap_values[2][0]   # class 0, sample 0
 
     shap_df = pd.DataFrame({
         "Feature": feature_names,
@@ -67,11 +71,12 @@ def compute_shap_values(X_all, preds):
         "Value": X_all[0]
     }).sort_values("SHAP Value", key=abs, ascending=False)
 
-    fig, ax = plt.subplots(figsize=(8,5))
-    shap_df.head(10).plot(
-        kind="barh", x="Feature", y="SHAP Value", ax=ax, legend=False
+    fig = px.bar(
+        shap_df.head(10),
+        x="SHAP Value", y="Feature",
+        orientation="h",
+        title=f"Top SHAP Feature Impacts (Class: Good)"
     )
-    plt.tight_layout()
     return shap_df, fig
 
 # --------------------------
@@ -162,3 +167,22 @@ if st.button("🔮 Predict + Explain"):
 
     except Exception as e:
         st.error(f"Prediction/SHAP error: {str(e)}")
+
+
+# ---------------------------
+# ส่วน prediction ใน Streamlit
+# ---------------------------
+if st.button("Predict"):
+    try:
+        preds = model.predict(input_data_scaled)
+        prob_good = float(preds[0][0])   # ✅ index 0 = Good
+        st.metric("P(Good)", f"{prob_good:.2%}")
+
+        shap_df, fig = compute_shap_values(input_data_scaled, preds)
+        st.subheader("Local SHAP Explanation (Why this prediction?)")
+        st.dataframe(shap_df.head(10))
+        st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Prediction/SHAP error: {e}")
+
