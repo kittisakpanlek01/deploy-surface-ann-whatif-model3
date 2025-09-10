@@ -86,15 +86,28 @@ if st.button("Run Prediction"):
         # ===========================
         try:
             st.subheader("Local SHAP Explanation")
-            # ใช้ background เล็ก ๆ จะเสถียรกว่า
-            background = X_all
 
+            # ใช้ background (sampling เล็ก ๆ จะเสถียรกว่า)
+            background = X_all
             explainer = shap.Explainer(model, background)
-            shap_values = explainer(X_all)
+            shap_values = explainer(X_all)  # ออกมาเป็น multi-output
+
+            # เลือก class "No Defect" = index 3
+            if shap_values.values.ndim == 3:
+                sv = shap_values.values[0, :, 3]   # sample 0, features :, class index 3
+            elif shap_values.values.ndim == 2:
+                sv = shap_values.values[0]         # กรณี binary หรือ single output
+            else:
+                raise ValueError("Unexpected SHAP output shape")
 
             # plot waterfall
             fig, ax = plt.subplots(figsize=(8, 5))
-            shap.plots.waterfall(shap_values[0], show=False)
+            shap.plots.waterfall(shap.Explanation(
+                values=sv,
+                base_values=shap_values.base_values[0, 3] if shap_values.values.ndim == 3 else shap_values.base_values[0],
+                data=X_all[0],
+                feature_names=num_cols + list(encoder.get_feature_names_out(cat_cols))
+            ), show=False)
             st.pyplot(fig)
 
         except Exception as e:
