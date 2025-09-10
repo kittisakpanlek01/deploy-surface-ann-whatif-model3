@@ -7,6 +7,12 @@ import tensorflow as tf
 import datetime
 import os
 import json
+import re
+
+# เพิ่ม 2 บรรทัดนี้เข้ามาครับ
+import shap
+import matplotlib.pyplot as plt
+
 
 # --- โหลด model & preprocessors (ปรับ path ตามจริง) ---
 model = tf.keras.models.load_model("surface_ann_model.keras")
@@ -56,7 +62,6 @@ def predict_probs(features_dict):
     return prob_series, pred_class
 
 # --- helper: find index for "Good/No Defect" class if possible ---
-import re
 def find_good_label_index():
     classes = list(label_encoder.classes_)
     for i, cls in enumerate(classes):
@@ -163,8 +168,6 @@ def compute_and_plot_shap(base_features_dict):
     except Exception as e:
         return None, f"SHAP computation failed: {e}"
 
-
-# ... (โค้ดส่วน Streamlit UI ก่อนหน้า) ...
 # --- Logging function ---
 def append_log(entry: dict):
     df_entry = pd.DataFrame([entry])
@@ -194,27 +197,28 @@ with col3:
     for c in ["HDFBTH","LSP_Body","Entry_Body"]:
         default = 18.0 if c=="HDFBTH" else (1110.0 if c=="LSP_Body" else 1040.0)
         base_features[c] = st.number_input(c, value=float(default))
-# other numeric features set to defaults or zeros
-for c in num_cols:
-    if c not in base_features:
-        base_features[c] = st.number_input(c, value=0.0, key=f"num_{c}")
+
+# # other numeric features set to defaults or zeros -- this is probably a mistake. Let's make it more explicit.
+# for c in num_cols:
+#     if c not in base_features:
+#         base_features[c] = st.number_input(c, value=0.0, key=f"num_{c}")
+
 
 # categorical inputs (use first known categories from encoder if possible)
 st.markdown("**Categorical features (use for model input)**")
 cat_defaults = {}
-for c in cat_cols:
-    # Try to set a sensible default if encoder has categories
-    opts = None
-    try:
-        # encoder.categories_ corresponds to columns of encoder but may be for all categorical features combined
-        # We cannot directly map easily in general; keep a text input fallback
-        opts = None
-    except Exception:
-        opts = None
-    if opts:
-        cat_defaults[c] = st.selectbox(c, options=opts)
-    else:
-        cat_defaults[c] = st.text_input(c, value="")
+col1, col2 = st.columns(2)
+# Splitting cat_cols for better layout
+cat_cols_1 = cat_cols[:len(cat_cols)//2]
+cat_cols_2 = cat_cols[len(cat_cols)//2:]
+
+with col1:
+    for c in cat_cols_1:
+        cat_defaults[c] = st.text_input(c, value="", key=f"cat_{c}")
+with col2:
+    for c in cat_cols_2:
+        cat_defaults[c] = st.text_input(c, value="", key=f"cat_{c}")
+
 
 # Predict current probabilities
 if st.button("Predict current P(classes)"):
@@ -294,7 +298,9 @@ st.markdown("ถ้าคุณจะนำคำแนะนำไปใช้�
 selected_feature = st.selectbox("เลือก feature ที่จะปรับ (หรือเลือก 'Manual')", ["Manual"] + list(actionable.keys()))
 actual_changes = {}
 if selected_feature != "Manual":
-    suggested_val = st.number_input(f"ค่าสำหรับ {selected_feature} (Suggested)", value=float(base_features[selected_feature]))
+    # Get suggested value from session state or re-calculate if needed, for now just use base
+    suggested_val = base_features.get(selected_feature, 0.0)
+    st.number_input(f"ค่าสำหรับ {selected_feature} (Suggested)", value=float(suggested_val), disabled=True)
     actual_changes[selected_feature] = st.number_input(f"ค่าสำหรับ {selected_feature} (Actual applied)", value=float(suggested_val))
 else:
     for f in actionable.keys():
@@ -305,11 +311,15 @@ notes = st.text_area("Notes / observation")
 outcome = st.selectbox("Outcome (observed)", ["Good", "Defect", "Other/Unknown"])
 
 if st.button("Save decision and outcome to log"):
+    # Ensure all base features and actual changes are floats for JSON serialization
+    base_features_float = {k: float(v) for k, v in base_features.items()}
+    actual_changes_float = {k: float(v) for k, v in actual_changes.items()}
+
     entry = {
         "timestamp": datetime.datetime.now().isoformat(),
         "operator": operator,
-        "base_features": json.dumps({k: float(base_features[k]) for k in base_features}),
-        "applied_features": json.dumps({k: float(actual_changes[k]) for k in actual_changes}),
+        "base_features": json.dumps(base_features_float),
+        "applied_features": json.dumps(actual_changes_float),
         "selected_suggestion": selected_feature,
         "notes": notes,
         "outcome": outcome
@@ -319,4 +329,5 @@ if st.button("Save decision and outcome to log"):
 
 # allow download log
 if os.path.exists(LOGFILE):
-    st.download_button("ดาวน์โหลด log (policy_log.csv)", data=open(LOGFILE,"rb"), file_name=LOGFILE)
+    with open(LOGFILE, "rb") as f:
+        st.download_button("ดาวน์โหลด log (policy_log.csv)", data=f, file_name=LOGFILE)
