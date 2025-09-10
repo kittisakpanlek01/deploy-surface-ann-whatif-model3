@@ -43,11 +43,11 @@ input_data = {
     "CT_HEAD": st.sidebar.number_input("CT_HEAD", value=540.0),
     "FTGM": st.sidebar.number_input("FM_FORCE", value=9000),
     "HDFBTH": st.sidebar.number_input("HDFBTH", value=18.0),
-    "QUASTR": st.sidebar.selectbox("QUASTR", options=["C032", "C032RBB", "CG145", "CS0810", "CN1410", "CR1512"]),
-    "OPCCO": st.sidebar.selectbox("OPCCO", options=["0", "10", "21", "31", "41", "51", "66"]),
+    "QUASTR": st.sidebar.selectbox("QUASTR", options=["C032RBB", "C032", "CG145", "CS0810", "CN1410", "CR1512"]),
+    "OPCCO": st.sidebar.selectbox("OPCCO", options=["31", "0", "10", "21",  "41", "51", "66"]),
     "LCBXON": st.sidebar.selectbox("LCBXON", options=["USED CB", "BYPASS CB"]),
-    "Product": st.sidebar.selectbox("PRODUCT", options=["ColdRoll", "CutSheet", "Other", "PO/POx", "Stock"]),
-    "ENDUSE": st.sidebar.selectbox("ENDUSE", options=["PNX", "SDX", "FXX", "DGX", "ADO", "ADH", "K1I", "GXX", "RST"]),
+    "Product": st.sidebar.selectbox("PRODUCT", options=["PO/POx", "ColdRoll", "CutSheet", "Other",  "Stock"]),
+    "ENDUSE": st.sidebar.selectbox("ENDUSE", options=["ADO", "PNX", "SDX", "FXX", "DGX", "ADH", "K1I", "GXX", "RST"]),
     "PASSNR": st.sidebar.selectbox("RM_PASS", options=["5", "7", "9"])
 }
 
@@ -71,7 +71,7 @@ if st.button("Run Prediction"):
         probs = tf.nn.softmax(pred).numpy()[0]
 
         # P(No Defect) = index 3
-        p_good = probs[3] if len(probs) > 3 else None
+        p_good = probs[2] if len(probs) > 3 else None
         pred_label = label_encoder.inverse_transform([np.argmax(pred)])[0]
 
         st.subheader("Prediction Result")
