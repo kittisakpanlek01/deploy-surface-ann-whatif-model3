@@ -162,7 +162,7 @@ def append_log(entry: dict):
 #         st.text(traceback.format_exc()) # แสดง error แบบละเอียดเพื่อ debug
 #         return None, f"SHAP computation failed: {e}"
 
-def compute_and_plot_shap(df_input, model, scaler, encoder, label_encoder, num_cols, cat_cols):
+def compute_and_plot_shap(df_input, model, scaler, encoder, num_cols, cat_cols):
     try:
         # --- เตรียม input ---
         X_num = df_input[num_cols]
@@ -171,23 +171,20 @@ def compute_and_plot_shap(df_input, model, scaler, encoder, label_encoder, num_c
         X_cat_encoded = encoder.transform(X_cat).toarray()
         X_all = np.hstack((X_scaled, X_cat_encoded))
 
-        # --- background data (numeric only) ---
+        # background data ต้องเป็น numeric
         background_data = X_all[np.random.choice(X_all.shape[0], min(50, X_all.shape[0]), replace=False)]
-
-        # ใช้ KMeans summarization จาก shap
         background_summary = shap.kmeans(background_data, 15)
 
-        # --- สร้าง explainer ---
+        # สร้าง explainer
         explainer = shap.KernelExplainer(model.predict, background_summary)
 
-        # --- คำนวณ SHAP ---
+        # คำนวณ SHAP
         shap_values = explainer.shap_values(X_all, nsamples=50)
 
-        # --- สำหรับ multi-class เลือก "No Defect" = index 2 ---
-        target_class = 2  
+        # เลือก class "No Defect" = index 2
+        target_class = 2
         shap_value_single = shap_values[target_class][0]
 
-        st.subheader("Local SHAP Explanation")
         fig, ax = plt.subplots()
         shap.plots.waterfall(
             shap.Explanation(
@@ -198,10 +195,10 @@ def compute_and_plot_shap(df_input, model, scaler, encoder, label_encoder, num_c
             ),
             show=False
         )
-        st.pyplot(fig)
+        return fig, None   # ✅ return 2 ค่าเสมอ
 
     except Exception as e:
-        st.error(f"SHAP computation failed: {e}")
+        return None, str(e)  # ✅ return error message
 
 
 # ----------------- Streamlit UI -----------------
