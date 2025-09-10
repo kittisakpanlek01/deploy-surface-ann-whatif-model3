@@ -4,54 +4,36 @@ import numpy as np
 import joblib
 import tensorflow as tf
 import shap
-import matplotlib.pyplot as plt
+import plotly.express as px
 import os
-from datetime import datetime
 
 # --------------------------
-# โหลดโมเดลและ Tools
+# Load model and preprocessors
 # --------------------------
 model = tf.keras.models.load_model("surface_ann_model.keras")
 scaler = joblib.load("scaler.pkl")
 encoder = joblib.load("onehot_encoder.pkl")
 label_encoder = joblib.load("label_encoder.pkl")
 
-# --------------------------
-# Feature Groups
-# --------------------------
-num_cols = ['HNSPDI','WNSPDI','RMEXTG','SLFUTI','LSP_Body','Entry_Body',
-            'XVPTF8','FT_HEAD','CT_HEAD','FTGM','HDFBTH']
-cat_cols = ['QUASTR','OPCCO','LCBXON','Product','ENDUSE','PASSNR']
+# Columns
+num_cols = ['HNSPDI', 'WNSPDI', 'RMEXTG', 'SLFUTI',
+            'LSP_Body', 'Entry_Body', 'XVPTF8', 'FT_HEAD',
+            'CT_HEAD', 'FTGM', 'HDFBTH']
+cat_cols = ['QUASTR', 'OPCCO', 'LCBXON',
+            'Product', 'ENDUSE', 'PASSNR']
 
 # --------------------------
-# Suggest Changes Function
+# Helper functions
 # --------------------------
-def suggest_changes(df_input, base_prob, step=0.05):
-    """จำลองการปรับ feature ทีละนิด แล้วบอกว่า Δ เท่าไรที่ช่วยเพิ่ม P(Good)"""
-    suggestions = []
-    for col in num_cols:
-        test_df = df_input.copy()
-        test_df[col] = test_df[col] * (1 + step)  # เพิ่มขึ้นเล็กน้อย
-        X_num = scaler.transform(test_df[num_cols])
-        X_cat = encoder.transform(test_df[cat_cols]).toarray()
-        X_all = np.hstack((X_num, X_cat))
-        preds = model.predict(X_all, verbose=0)
-        prob_good = preds[0][np.argmax(preds)]
-        if prob_good > base_prob:
-            suggestions.append({
-                "feature": col,
-                "change": f"+{step*100:.1f}%",
-                "delta_prob": prob_good - base_prob
-            })
-    return suggestions
+def preprocess_input(df_input):
+    """Scale numeric + encode categorical"""
+    X_num = scaler.transform(df_input[num_cols])
+    X_cat = encoder.transform(df_input[cat_cols]).toarray()
+    return np.hstack((X_num, X_cat))
 
-# --------------------------
-# SHAP Computation Function
-# --------------------------
-def compute_shap_values(X_all, preds):
-    """
-    คำนวณ SHAP values สำหรับ class 'Good' (index 0)
-    """
+
+def compute_shap_values(X_all):
+    """คำนวณ SHAP values สำหรับ class 'No Defect' (index=3)"""
     try:
         explainer = shap.DeepExplainer(model, X_all)
         shap_values = explainer.shap_values(X_all)
@@ -62,8 +44,7 @@ def compute_shap_values(X_all, preds):
 
     feature_names = num_cols + list(encoder.get_feature_names_out(cat_cols))
 
-    # ✅ Fix: อธิบายเฉพาะ class 0 (Good)
-    sv = shap_values[2][0]   # class 0, sample 0
+    sv = shap_values[3][0]  # ✅ class index 3 = "No Defect"
 
     shap_df = pd.DataFrame({
         "Feature": feature_names,
@@ -75,36 +56,50 @@ def compute_shap_values(X_all, preds):
         shap_df.head(10),
         x="SHAP Value", y="Feature",
         orientation="h",
-        title=f"Top SHAP Feature Impacts (Class: Good)"
+        title=f"Top SHAP Feature Impacts (Class: No Defect)"
     )
     return shap_df, fig
 
-# --------------------------
-# Logging Function
-# --------------------------
-def append_log(df_input, pred_label, suggestions, logfile="policy_log.csv"):
-    """บันทึก Input + Prediction + Suggestions ลงไฟล์ CSV"""
-    log_entry = df_input.copy()
-    log_entry["Prediction"] = pred_label[0]
-    log_entry["Timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log_entry["Suggestions"] = str(suggestions)
 
-    if os.path.exists(logfile):
-        log_df = pd.read_csv(logfile)
-        log_df = pd.concat([log_df, log_entry], ignore_index=True)
+def suggest_changes(X_all, feature, step=0.05):
+    """Simple simulation: ลองปรับ feature แล้วดูว่า P(No Defect) ดีขึ้นไหม"""
+    base_pred = model.predict(X_all)[0][3]  # P(No Defect)
+    suggestions = []
+    for delta in [-2, -1, 1, 2]:
+        X_temp = X_all.copy()
+        col_idx = num_cols.index(feature) if feature in num_cols else None
+        if col_idx is not None:
+            X_temp[0, col_idx] += delta * step
+            new_pred = model.predict(X_temp)[0][3]
+            suggestions.append((delta, new_pred))
+    best = max(suggestions, key=lambda x: x[1])
+    return base_pred, best
+
+
+def append_log(input_dict, prob_good, suggestions):
+    """บันทึกคำแนะนำ → การปรับจริง → ผลลัพธ์"""
+    log_file = "whatif_log.csv"
+    new_row = {"input": str(input_dict),
+               "P_NoDefect": prob_good,
+               "suggestions": str(suggestions)}
+
+    if os.path.exists(log_file):
+        df_log = pd.read_csv(log_file)
+        df_log = pd.concat([df_log, pd.DataFrame([new_row])],
+                           ignore_index=True)
     else:
-        log_df = log_entry
+        df_log = pd.DataFrame([new_row])
 
-    log_df.to_csv(logfile, index=False)
+    df_log.to_csv(log_file, index=False)
+
 
 # --------------------------
-# UI Layout
+# Streamlit UI
 # --------------------------
-st.set_page_config(page_title="What-if Surface Defect", layout="wide")
-st.title("🔎 What-if Analysis: Surface Defect Prevention")
+st.set_page_config(page_title="What-if: Surface Defect", layout="wide")
+st.title("🔎 What-if Analysis: Surface Defect Prediction (ANN)")
 
-st.sidebar.header("Input Parameters")
-
+st.sidebar.header("Input Features")
 input_data = {
     "HNSPDI": st.sidebar.number_input("THICKNESS", value=4.0),
     "WNSPDI": st.sidebar.number_input("WIDTH", value=1219.0),
@@ -117,71 +112,35 @@ input_data = {
     "CT_HEAD": st.sidebar.number_input("CT_HEAD", value=540.0),
     "FTGM": st.sidebar.number_input("FM_FORCE", value=9000.0),
     "HDFBTH": st.sidebar.number_input("HDFBTH", value=18.0),
-    "QUASTR": st.sidebar.selectbox("QUASTR", ["C032","C032RBB","CG145","CS0810","CN1410","CR1512"]),
-    "OPCCO": st.sidebar.selectbox("OPCCO", ["0","10","21","31","41","51","66"]),
-    "LCBXON": st.sidebar.selectbox("LCBXON", ["USED CB","BYPASS CB"]),
-    "Product": st.sidebar.selectbox("PRODUCT", ["ColdRoll","CutSheet","Other","PO/POx","Stock"]),
-    "ENDUSE": st.sidebar.selectbox("ENDUSE", ["PNX","SDX","FXX","DGX","ADO","ADH","K1I","GXX","RST"]),
-    "PASSNR": st.sidebar.selectbox("RM_PASS", ["5","7","9"])
+    "QUASTR": st.sidebar.selectbox("QUASTR", options=["C032", "C032RBB", "CG145", "CS0810", "CN1410", "CR1512"]),
+    "OPCCO": st.sidebar.selectbox("OPCCO", options=["0", "10", "21", "31", "41", "51", "66"]),
+    "LCBXON": st.sidebar.selectbox("LCBXON", options=["USED CB", "BYPASS CB"]),
+    "Product": st.sidebar.selectbox("PRODUCT", options=["ColdRoll", "CutSheet", "Other", "PO/POx", "Stock"]),
+    "ENDUSE": st.sidebar.selectbox("ENDUSE", options=["PNX", "SDX", "FXX", "DGX", "ADO", "ADH", "K1I", "GXX", "RST"]),
+    "PASSNR": st.sidebar.selectbox("RM_PASS", options=["5", "7", "9"])
 }
-
 df_input = pd.DataFrame([input_data])
+X_all = preprocess_input(df_input)
 
-# --------------------------
-# Prediction + SHAP
-# --------------------------
-if st.button("🔮 Predict + Explain"):
+if st.button("🔮 Predict"):
     try:
-        # เตรียมข้อมูล
-        X_num = df_input[num_cols]
-        X_cat = df_input[cat_cols]
-        X_scaled = scaler.transform(X_num)
-        X_cat_encoded = encoder.transform(X_cat).toarray()
-        X_all = np.hstack((X_scaled, X_cat_encoded))
+        preds = model.predict(X_all)
+        prob_good = float(preds[0][3])  # ✅ Index 3 = No Defect
+        st.metric("P(No Defect)", f"{prob_good:.2%}")
 
-        # พยากรณ์
-        preds = model.predict(X_all, verbose=0)
-        pred_label = label_encoder.inverse_transform([np.argmax(preds)])
-        base_prob = preds[0][np.argmax(preds)]
-
-        st.subheader("📌 Prediction Result")
-        st.success(f"Prediction: {pred_label[0]}")
-        st.write("Probability (per class):", preds.tolist())
-
-        # Suggestion Engine
-        st.subheader("🛠 Suggested Feature Adjustments")
-        suggestions = suggest_changes(df_input, base_prob)
-        if suggestions:
-            st.write(pd.DataFrame(suggestions))
-        else:
-            st.info("No simple improvement found with +5% simulation.")
-
-        # SHAP Local Explanation
-        st.subheader("📊 Local SHAP Explanation")
-        shap_df, fig = compute_shap_values(X_all, preds)
-        st.dataframe(shap_df.head(10))
-        st.pyplot(fig)
-
-        # Logging
-        append_log(df_input, pred_label, suggestions)
-
-    except Exception as e:
-        st.error(f"Prediction/SHAP error: {str(e)}")
-
-
-# ---------------------------
-# ส่วน prediction ใน Streamlit
-# ---------------------------
-if st.button("Predict"):
-    try:
-        preds = model.predict(input_data_scaled)
-        prob_good = float(preds[0][0])   # ✅ index 0 = Good
-        st.metric("P(Good)", f"{prob_good:.2%}")
-
-        shap_df, fig = compute_shap_values(input_data_scaled, preds)
+        shap_df, fig = compute_shap_values(X_all)
         st.subheader("Local SHAP Explanation (Why this prediction?)")
         st.dataframe(shap_df.head(10))
         st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("📌 Suggestions")
+        suggestions = {}
+        for f in ["CT_HEAD", "FT_HEAD", "XVPTF8", "FTGM", "HDFBTH", "LSP_Body", "Entry_Body"]:
+            base_pred, best = suggest_changes(X_all, f, step=0.1)
+            suggestions[f] = {"Δ": best[0], "New_P": best[1]}
+            st.write(f"- {f}: Δ{best[0]} → P(No Defect) = {best[1]:.2%}")
+
+        append_log(input_data, prob_good, suggestions)
 
     except Exception as e:
         st.error(f"Prediction/SHAP error: {e}")
