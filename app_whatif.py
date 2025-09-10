@@ -22,15 +22,17 @@ label_encoder = joblib.load("label_encoder.pkl")
 try:
     X_train_sample = pd.read_csv("X_train_sample_processed.csv", header=None).values
     st.sidebar.success("Loaded SHAP background data.")
+# Around line 25
 except FileNotFoundError:
     st.sidebar.error("ไม่พบไฟล์ 'X_train_sample_processed.csv' สำหรับ SHAP")
-    st.sidebar.warning("SHAP explanation อาจทำงานไม่ถูกต้อง")
+    st.sidebar.warning("SHAP explanation อาจทำงานไม่ถูกต้อง (ใช้ข้อมูลจำลอง)")
     # สร้างข้อมูลจำลองขึ้นมาแทนชั่วคราว ถ้าไม่พบไฟล์ เพื่อไม่ให้แอปพัง
     if 'model' in locals() and hasattr(model, 'input_shape'):
-        X_train_sample = np.zeros((1, model.input_shape[1]))
+        # Create 100 dummy samples instead of 1
+        X_train_sample = np.zeros((100, model.input_shape[1])) # <-- FIX
     else:
         # ใส่จำนวน features โดยประมาณ หาก model ยังไม่ถูกโหลด
-        X_train_sample = np.zeros((1, 50)) 
+        X_train_sample = np.zeros((100, 50)) # <-- FIX
 
 
 # features (ปรับให้ตรงกับของคุณ)
