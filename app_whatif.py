@@ -162,27 +162,21 @@ def append_log(entry: dict):
 #         st.text(traceback.format_exc()) # แสดง error แบบละเอียดเพื่อ debug
 #         return None, f"SHAP computation failed: {e}"
 
-def compute_and_plot_shap(df_input, model, scaler, encoder, num_cols, cat_cols):
+def compute_and_plot_shap(df_input):
     try:
-        # --- เตรียม input ---
         X_num = df_input[num_cols]
         X_cat = df_input[cat_cols]
         X_scaled = scaler.transform(X_num)
         X_cat_encoded = encoder.transform(X_cat).toarray()
         X_all = np.hstack((X_scaled, X_cat_encoded))
 
-        # background data ต้องเป็น numeric
         background_data = X_all[np.random.choice(X_all.shape[0], min(50, X_all.shape[0]), replace=False)]
         background_summary = shap.kmeans(background_data, 15)
 
-        # สร้าง explainer
         explainer = shap.KernelExplainer(model.predict, background_summary)
-
-        # คำนวณ SHAP
         shap_values = explainer.shap_values(X_all, nsamples=50)
 
-        # เลือก class "No Defect" = index 2
-        target_class = 2
+        target_class = 2  # No Defect
         shap_value_single = shap_values[target_class][0]
 
         fig, ax = plt.subplots()
@@ -195,10 +189,10 @@ def compute_and_plot_shap(df_input, model, scaler, encoder, num_cols, cat_cols):
             ),
             show=False
         )
-        return fig, None   # ✅ return 2 ค่าเสมอ
-
+        return fig, None
     except Exception as e:
-        return None, str(e)  # ✅ return error message
+        return None, str(e)
+
 
 
 # ----------------- Streamlit UI -----------------
@@ -289,7 +283,9 @@ if st.button("Compute SHAP for current profile"):
     with st.spinner("Calculating SHAP values... This may take a moment."):
         current_features = {**base_features, **cat_defaults}
         # ส่ง background data เข้าไปด้วย
-        fig, err = compute_and_plot_shap(current_features, X_train_sample)
+        # fig, err = compute_and_plot_shap(current_features, X_train_sample)
+        fig, err = compute_and_plot_shap(current_features)
+
         if err:
             st.error(err)
         else:
