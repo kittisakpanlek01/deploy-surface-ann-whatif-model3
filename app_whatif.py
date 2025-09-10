@@ -180,8 +180,17 @@ def compute_and_plot_shap(df_input):
         X_all = np.hstack((X_scaled, X_cat_encoded))
 
         # --- background data ---
-        background_data = X_all[np.random.choice(X_all.shape[0], min(50, X_all.shape[0]), replace=False)]
-        background_summary = shap.kmeans(background_data, 15)
+        # background_data = X_all[np.random.choice(X_all.shape[0], min(50, X_all.shape[0]), replace=False)]
+        # background_summary = shap.kmeans(background_data, 15)
+
+        # --- background data ---
+        n_samples = X_all.shape[0]
+        sample_size = min(50, n_samples)
+        background_data = X_all[np.random.choice(X_all.shape[0], sample_size, replace=False)]
+        
+        # ป้องกัน cluster > sample
+        n_clusters = min(15, background_data.shape[0])
+        background_summary = shap.kmeans(background_data, n_clusters)
 
         # --- explainer ---
         explainer = shap.KernelExplainer(model.predict, background_summary)
