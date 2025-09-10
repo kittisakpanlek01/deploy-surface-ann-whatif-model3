@@ -164,21 +164,34 @@ def append_log(entry: dict):
 
 def compute_and_plot_shap(df_input):
     try:
+        # --- ensure DataFrame ---
+        if isinstance(df_input, dict):
+            df_input = pd.DataFrame([df_input])
+        elif isinstance(df_input, list):
+            df_input = pd.DataFrame(df_input)
+
+        # --- split num/cat ---
         X_num = df_input[num_cols]
         X_cat = df_input[cat_cols]
+
+        # --- preprocess ---
         X_scaled = scaler.transform(X_num)
         X_cat_encoded = encoder.transform(X_cat).toarray()
         X_all = np.hstack((X_scaled, X_cat_encoded))
 
+        # --- background data ---
         background_data = X_all[np.random.choice(X_all.shape[0], min(50, X_all.shape[0]), replace=False)]
         background_summary = shap.kmeans(background_data, 15)
 
+        # --- explainer ---
         explainer = shap.KernelExplainer(model.predict, background_summary)
         shap_values = explainer.shap_values(X_all, nsamples=50)
 
-        target_class = 2  # No Defect
+        # --- class "No Defect" = index 2 ---
+        target_class = 2
         shap_value_single = shap_values[target_class][0]
 
+        # --- plot ---
         fig, ax = plt.subplots()
         shap.plots.waterfall(
             shap.Explanation(
@@ -192,7 +205,6 @@ def compute_and_plot_shap(df_input):
         return fig, None
     except Exception as e:
         return None, str(e)
-
 
 
 # ----------------- Streamlit UI -----------------
