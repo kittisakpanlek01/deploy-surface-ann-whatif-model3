@@ -4,7 +4,8 @@ import numpy as np
 import joblib
 import tensorflow as tf
 import shap
-import plotly.express as px
+# import plotly.express as px
+import matplotlib.pyplot as plt
 import os
 
 # --------------------------
@@ -52,12 +53,17 @@ def compute_shap_values(X_all):
         "Value": X_all[0]
     }).sort_values("SHAP Value", key=abs, ascending=False)
 
-    fig = px.bar(
-        shap_df.head(10),
-        x="SHAP Value", y="Feature",
-        orientation="h",
-        title=f"Top SHAP Feature Impacts (Class: No Defect)"
+    # fig = px.bar(
+    #     shap_df.head(10),
+    #     x="SHAP Value", y="Feature",
+    #     orientation="h",
+    #     title=f"Top SHAP Feature Impacts (Class: No Defect)"
+    # )
+    fig, ax = plt.subplots(figsize=(8,5))
+    shap_df.head(10).plot(
+        kind="barh", x="Feature", y="SHAP Value", ax=ax, legend=False
     )
+    plt.tight_layout()
     return shap_df, fig
 
 
